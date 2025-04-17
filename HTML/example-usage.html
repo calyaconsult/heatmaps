@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Grid with JSON Data</title>
+    <script src="color-functions.js"></script>
+    <style>
+        .image-container {
+            position: relative;
+            display: inline-block;
+        }
+
+        .grid-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .grid-line {
+            position: absolute;
+            background-color: rgba(127, 127, 255, 0.5);
+        }
+
+        .horizontal-line {
+            width: 100%;
+            height: 1px;
+            left: 0;
+        }
+
+        .vertical-line {
+            height: 100%;
+            width: 1px;
+            top: 0;
+        }
+
+        .cell-highlight {
+            position: absolute;
+            background-color: rgba(255, 0, 0, 0.3);
+            pointer-events: none;
+            display: none;
+        }
+
+        .data-marker {
+            position: absolute;
+            background-color: rgba(0, 255, 0, 0.2);
+            pointer-events: none;
+            display: block;
+        }
+
+        .coordinates-display {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            display: none;
+        }
+
+        .tooltip {
+            position: absolute;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            max-width: 200px;
+            pointer-events: none;
+            z-index: 100;
+            display: none;
+        }
+
+        .tooltip-row {
+            margin: 4px 0;
+        }
+        body {
+          font-family: sans-serif;
+        }
+        main {
+          padding: 1rem, 2rem;
+          text-align: center;
+        }
+        .color-indicator {
+          padding: 4px;
+          border-radius: 6px;
+        }
+    </style>
+</head>
+<body>
+    <main>
+      <h1>Map to Grid</h1>
+      <p>Colors indicate battery levels (<span class="color-indicator" id="c1">c1</span>: low,
+          <span class="color-indicator" id="c2">c2</span>: middle,
+          <span class="color-indicator" id="c3">c3</span>: high)</p>
+      <p>Color map: <span class="color-indicator" id="color-map-name">not set</span> For more color maps see <a href="test-colors-e.html">test-colors-e.html</a></p>
+      <div class="image-container" id="image-container">
+        <img id="target-image" src="https://dummyimage.com/1204x876/fff/fff.jpg" alt="Image with grid overlay">
+        <div id="grid-overlay" class="grid-overlay"></div>
+        <div id="cell-highlight" class="cell-highlight"></div>
+        <div id="data-markers-container"></div>
+        <div id="coordinates-display" class="coordinates-display"></div>
+        <div id="tooltip" class="tooltip"></div>
+      </div>
+    </main>
+
+    <script>
+        // Configuration
+        const offset = 1;
+        const config = {
+            offset: offset,
+            rows: 40+2*offset,
+            columns: 60+2*offset,
+            color: 'rgba(127, 127, 255, 0.5)',
+            thickness: 1
+        };
+
+        // Global variables
+        let gridData = [];
+        let addToAccu;
+
+        // Initialize when image loads
+        const init = async () => {
+            await loadGridData();
+            createGridOverlay();
+            markDataCells();
+            setupClickHandler();
+            console.log('Initialized with', gridData.length, 'data points');
+        };
+
+        // Load JSON data
+        async function loadGridData() {
+            try {
+                const response = await fetch('stations_with_grid.json');
+                gridData = (await response.json()).map(x => {const newObj = x; newObj.column = x.column+config.offset; newObj.row = config.rows-x.row-config.offset; return newObj;});
+                // console.log(gridData);
+                addToAccu = clickAccu();
+            } catch (error) {
+                console.error('Error loading grid data:', error);
+                gridData = [];
+            }
+        }
+
+        // Color names and specs are defined in colorDescription and colorScale
+        // getHeatmapColor, heatMapColor, getColor, percentageToRGBa, percentageToRGBb, getPercentageColor
+        const getColorFunction = getPercentageColor; // `getColor` is a function name!
+        colorDescription(colorScale['getPercentageColor'],'getPercentageColor'); // 'getColor' is the function name as string!
+
+        // Mark all cells that have data
+        function markDataCells() {
+            const container = document.getElementById('data-markers-container');
+            container.innerHTML = '';
+
+            gridData.forEach(item => {
+                const marker = document.createElement('div');
+                marker.className = 'data-marker';
+                marker.style.left = `${(item.column - 1) * (100 / config.columns)}%`;
+                marker.style.top = `${(item.row - 1) * (100 / config.rows)}%`;
+                marker.style.width = `${100 / config.columns}%`;
+                marker.style.height = `${100 / config.rows}%`;
+                marker.style["background-color"] = getColorFunction(item.Battery_level);
+                // Add data attributes for easy access
+                marker.dataset.row = item.row;
+                marker.dataset.column = item.column;
+
+                container.appendChild(marker);
+            });
+        }
+
+        // Click accumulator
+        const clickAccu = () => {
+            let accu = [];
+            return (coords, action) => {
+                if (action === 'add') {
+                    accu.push(coords);
+                    return true;
+                } else if (action === 'clear') {
+                    accu = [];
+                    return false;
+                } else {
+                    return [...accu];
+                }
+            }
+        };
+
+        function createGridOverlay() {
+            const overlay = document.getElementById('grid-overlay');
+            overlay.innerHTML = '';
+
+            // Create horizontal lines
+            const rowSpacing = 100 / config.rows;
+            for (let i = 1; i < config.rows; i++) {
+                const line = document.createElement('div');
+                line.className = 'grid-line horizontal-line';
+                line.style.top = `${i * rowSpacing}%`;
+                line.style.backgroundColor = config.color;
+                line.style.height = `${config.thickness}px`;
+                overlay.appendChild(line);
+            }
+
+            // Create vertical lines
+            const columnSpacing = 100 / config.columns;
+            for (let i = 1; i < config.columns; i++) {
+                const line = document.createElement('div');
+                line.className = 'grid-line vertical-line';
+                line.style.left = `${i * columnSpacing}%`;
+                line.style.backgroundColor = config.color;
+                line.style.width = `${config.thickness}px`;
+                overlay.appendChild(line);
+            }
+        }
+
+        function setupClickHandler() {
+            const container = document.getElementById('image-container');
+            container.removeEventListener('click', handleClick);
+            container.addEventListener('click', handleClick);
+        }
+
+        function handleClick(e) {
+            const { row, column } = getCellCoordinates(e);
+            addToAccu({ row, column }, 'add');
+            updateCellHighlight(row, column);
+            updateCoordinatesDisplay(row, column);
+            showTooltip(row, column, e.clientX, e.clientY);
+        }
+
+        function updateCellHighlight(row, column) {
+            const highlight = document.getElementById('cell-highlight');
+            highlight.style.display = 'block';
+            highlight.style.left = `${(column - 1) * (100 / config.columns)}%`;
+            highlight.style.top = `${(row - 1) * (100 / config.rows)}%`;
+            highlight.style.width = `${100 / config.columns}%`;
+            highlight.style.height = `${100 / config.rows}%`;
+        }
+
+        function updateCoordinatesDisplay(row, column) {
+            const display = document.getElementById('coordinates-display');
+            display.textContent = `Row: ${row}, Column: ${column}`;
+            display.style.display = 'block';
+        }
+
+        function showTooltip(row, column, mouseX, mouseY) {
+            const tooltip = document.getElementById('tooltip');
+            const data = findGridData(row, column);
+
+            if (data) {
+                tooltip.innerHTML = `
+                    <div class="tooltip-row"><strong>Location:</strong> ${data.Zip_City || 'N/A'}</div>
+                    <div class="tooltip-row"><strong>Vehicle:</strong> ${data.Vehicle || 'N/A'}</div>
+                    <div class="tooltip-row"><strong>Time:</strong> ${data.Created_at.split(' ')[1] || 'N/A'} (UTC)</div>
+                    <div class="tooltip-row"><strong>Device:</strong> ${data.Device_model || 'N/A'}</div>
+                    <div class="tooltip-row"><strong>Battery:</strong> ${data.Battery_level || 'N/A'}</div>
+                `;
+                tooltip.style.left = `${mouseX - 320}px`; // Depends on position of grid
+                tooltip.style.top = `${mouseY - 120}px`;  // Depends on position of grid
+                tooltip.style.display = 'block';
+            } else {
+                tooltip.style.display = 'none';
+            }
+        }
+
+        function findGridData(row, column) {
+            return gridData.find(item =>
+                item.row === row && item.column === column
+            );
+        }
+
+        function getCellCoordinates(e) {
+            const image = document.getElementById('target-image');
+            const rect = image.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const cellWidth = rect.width / config.columns;
+            const cellHeight = rect.height / config.rows;
+
+            const column = Math.min(config.columns, Math.max(1, Math.floor(x / cellWidth) + 1));
+            const row = Math.min(config.rows, Math.max(1, Math.floor(y / cellHeight) + 1));
+
+            return { row, column };
+        }
+
+        // Hide tooltip when mouse moves away
+        document.addEventListener('mousemove', (e) => {
+            if (!e.target.closest('#image-container')) {
+                document.getElementById('tooltip').style.display = 'none';
+            }
+        });
+
+        // Initialize
+        document.getElementById('target-image').onload = init;
+        if (document.getElementById('target-image').complete) init();
+    </script>
+</body>
+</html>
