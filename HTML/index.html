@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Color Scale Visualization</title>
+  <script src="color-functions.js"></script>
+  <style>
+    body {
+      background: #222;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      padding: 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .color-scale {
+      display: flex;
+      width: 550px;
+      height: 50px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+      border: 2px solid #444;
+    }
+
+    .color-segment {
+      flex: 1;
+      transition: transform 0.2s;
+      cursor: pointer;
+      position: relative;
+    }
+
+    .color-segment:hover {
+      transform: scaleY(1.1);
+      z-index: 2;
+    }
+
+    .tooltip {
+      position: absolute;
+      bottom: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(30,30,30,0.95);
+      color: #fff;
+      padding: 6px 12px;
+      border-radius: 5px;
+      font-size: 14px;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+
+    .color-segment:hover .tooltip {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <h2>Color Scale Visualization</h2>
+  <p>For a node script to generate heat maps see: <code>color-gradient.js</code></p>
+  <script>
+    const heatmaps = {}
+    const allFunctions = [getHeatmapColor, heatMapColor, getColor, percentageToRGBa, percentageToRGBb, percentageToRGBc, getPercentageColor];
+    allFunctions.forEach(fun => {
+       const colors = [];
+       for (let b=0;b<=100;b+=10) {
+           colors.push(fun(b));
+       }
+       heatmaps[fun.name] = colors;
+    })
+    /* Copy this to the console for manual retrieval of heatmaps
+    const allFunctions = [getHeatmapColor, heatMapColor, getColor, percentageToRGBa, percentageToRGBb, getPercentageColor];
+    allFunctions.forEach(fun => {
+         const colors = [];
+         for (let b=0;b<=100;b+=10) {
+             colors.push(fun(b));
+         }
+         console.log(fun.name,colors);
+    })
+    */
+    Object.keys(heatmaps).forEach(heatmap => {
+    const colors = heatmaps[heatmap];
+    const colorScale = document.createElement('div');
+    colorScale.classList.add('color-scale');
+    const colorScaleName = document.createElement('div');
+    colorScaleName.innerHTML = `<h3>${heatmap}</h3>`;
+
+      colors.forEach((color, idx) => {
+        const segment = document.createElement('div');
+        segment.className = 'color-segment';
+        segment.style.background = color;
+
+        // Tooltip
+        const tooltip = document.createElement('span');
+        tooltip.className = 'tooltip';
+        tooltip.innerText = color;
+        segment.appendChild(tooltip);
+
+        colorScale.appendChild(segment);
+      });
+      document.body.appendChild(colorScaleName);
+      document.body.appendChild(colorScale);
+    });
+  </script>
+</body>
+</html>
